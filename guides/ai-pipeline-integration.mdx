@@ -1,0 +1,118 @@
+---
+title: "Integrating Halgorithem into your AI agent pipelines"
+description: "Add Halgorithem as a verification step inside LangGraph, CrewAI, PydanticAI, or AutoGen to catch hallucinations before AI output is used downstream."
+---
+
+Halgorithem is designed to slot into AI agent pipelines as a post-generation verification step. After an LLM generates a response, Halgorithem checks each claim against your source documents for hallucinations before the output is used downstream. The key entry point is `Engine.verify()` — it takes already-loaded source documents and an AI-generated string, and returns a structured list of claims with statuses.
+
+## How `Engine.verify()` works
+
+<Note>
+  `Engine.verify()` does not make any LLM calls. It only runs the local sentence-transformer model to compare claims against your source documents. This means it is fast, deterministic, and does not incur API costs during verification.
+</Note>
+
+The method signature is:
+
+```python
+eng.verify(ai_output, source_docs, threshold=0.30)
+```
+
+It returns a dict with two keys:
+
+- `claims` — list of claim dicts, each with `status`, `claim`, `score`, `chunk_text`, and `unsupported_terms`
+- `summary` — a human-readable string like `"8/10 supported, 1/10 weak, 0/10 contradictions, 1/10 hallucinations"`
+
+## Generic integration pattern
+
+Use this pattern to add hallucination checking to any pipeline that has already generated an AI response:
+
+```python
+from engine import Engine
+
+eng = Engine()
+
+# After your pipeline generates a response:
+source_docs = eng.load_truth_files(["knowledge_base.txt"])
+verification = eng.verify(ai_output=llm_response, source_docs=source_docs, threshold=0.30)
+
+if any(c["status"] == "HALLUCINATION" for c in verification["claims"]):
+    # Handle hallucination
+    print("Hallucinations detected:", verification["summary"])
+```
+
+`load_truth_files()` returns the same list-of-dicts format as `scrape_urls()`, so you can mix file and URL sources by combining both calls.
+
+## Framework-specific patterns
+
+<Tabs>
+  <Tab title="LangGraph">
+    Add a verification node to your graph that runs after the generation step. The node reads from `state["ai_response"]` and writes the verification result back into state:
+
+    ```python
+    from engine import Engine
+
+    eng = Engine()
+
+    def verify_node(state):
+        """LangGraph node: verifies AI output for hallucinations."""
+        source_docs = eng.load_truth_files(state["source_files"])
+        result = eng.verify(
+            ai_output=state["ai_response"],
+            source_docs=source_docs,
+            threshold=0.30
+        )
+        return {**state, "verification": result, "has_hallucinations": any(
+            c["status"] == "HALLUCINATION" for c in result["claims"]
+        )}
+    ```
+
+    Wire it into your graph after the LLM generation node. You can then route on `state["has_hallucinations"]` to retry, flag, or reject the response.
+  </Tab>
+  <Tab title="CrewAI">
+    Wrap `Engine.verify()` as a `BaseTool` so your CrewAI agents can call it as part of their task execution:
+
+    ```python
+    from crewai.tools import BaseTool
+    from engine import Engine
+
+    class HalgorithemTool(BaseTool):
+        name: str = "hallucination_checker"
+        description: str = "Verifies AI output for hallucinations against source documents"
+
+        def _run(self, ai_output: str, source_file: str) -> str:
+            eng = Engine()
+            docs = eng.load_truth_files([source_file])
+            result = eng.verify(ai_output=ai_output, source_docs=docs)
+            return result["summary"]
+    ```
+
+    Assign this tool to a reviewer or QA agent. The tool returns the `summary` string, which the agent can include in its final output or use to decide whether to regenerate.
+  </Tab>
+  <Tab title="Generic">
+    Any pipeline that separates generation from output delivery can add Halgorithem as an intermediate step. The minimal pattern loads sources once, runs `verify()`, and gates on the result:
+
+    ```python
+    from engine import Engine
+
+    eng = Engine()
+    source_docs = eng.load_truth_files(["knowledge_base.txt"])
+
+    def check_before_delivery(llm_response: str) -> dict:
+        verification = eng.verify(
+            ai_output=llm_response,
+            source_docs=source_docs,
+            threshold=0.30,
+        )
+        return verification
+    ```
+
+    You can also combine URL and file sources by merging the outputs of `scrape_urls()` and `load_truth_files()`:
+
+    ```python
+    source_docs = (
+        eng.scrape_urls(["https://en.wikipedia.org/wiki/Apollo_11"])
+        + eng.load_truth_files(["internal_notes.txt"])
+    )
+    ```
+  </Tab>
+</Tabs>

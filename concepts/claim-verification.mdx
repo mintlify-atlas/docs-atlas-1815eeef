@@ -1,0 +1,127 @@
+---
+title: "Claim verification: statuses and detection methods"
+description: "How each extracted claim passes through number conflict, negation, and semantic checks before being assigned a final status in Halgorithem."
+---
+
+Each extracted claim passes through multiple detection systems before it is assigned a final status. Number conflicts and negation mismatches are checked first; if neither applies, the final status is determined purely by the adjusted cosine similarity score against the best-matching chunk.
+
+## Status types
+
+The table below shows what triggers each status. Thresholds use the default value of `0.30`; you can override this with the `threshold` parameter on `compare_to_docs()` or `compare_to_files()`.
+
+| Status | Condition |
+|---|---|
+| `SUPPORTED` | `best_score >= 0.65` |
+| `WEAK_SUPPORT` | `best_score >= threshold` and `best_score < 0.65` |
+| `CONTRADICTION` | Number mismatch **or** negation mismatch when `score >= threshold` |
+| `HALLUCINATION` | `best_score < threshold`, or no matching chunk found |
+
+The `0.65` boundary for `SUPPORTED` is hardcoded; only the `WEAK_SUPPORT` / `HALLUCINATION` boundary moves with `threshold`.
+
+## Detection mechanisms
+
+<AccordionGroup>
+  <Accordion title="Number conflict detection">
+    `has_number_conflict()` compares numbers extracted from the claim against numbers in the best-matching chunk. Two numbers are considered in conflict when both are in a `0.5x–2x` range of each other but are not equal — meaning they are close enough to be talking about the same quantity, but disagree on the value.
+
+    To reduce false positives, the function skips:
+    - **Years** — any value between 1400 and 2100
+    - **Small ordinals** — any value ≤ 31 (dates, rankings, small counts)
+
+    Numbers are extracted by `quantulum3`, which understands written-out values like "seven billion" and unit-bearing figures like "$4.2B", with a regex fallback for bare digits.
+
+    ```python
+    def skip(n):
+        try:
+            v = float(n)
+            return 1400 <= v <= 2100 or v <= 31  # years and small ordinals
+        except (ValueError, TypeError):
+            return True
+
+    # conflict when numbers are in 0.5x–2x range and differ
+    if min(cv, tv) / max(cv, tv) >= 0.5 and cv != tv:
+        return True, claim_numbers, truth_numbers
+    ```
+
+    When a conflict is found, the result includes `ai_numbers` and `truth_numbers` fields so you can inspect what values clashed.
+  </Accordion>
+
+  <Accordion title="Negation mismatch detection">
+    `has_negation_mismatch()` uses `negspacy` (a negation extension for spaCy) to detect whether the claim and the matched chunk disagree on negation. If one asserts something and the other denies it, the claim is flagged as a `CONTRADICTION`.
+
+    ```python
+    def has_negation_mismatch(claim, chunk_text):
+        claim_doc = nlp(claim)
+        chunk_doc = nlp(chunk_text)
+        claim_has_negation = any(getattr(t._, "negex", False) for t in claim_doc)
+        chunk_has_negation = any(getattr(t._, "negex", False) for t in chunk_doc)
+        return claim_has_negation != chunk_has_negation
+    ```
+
+    The negation penalty of `−0.30` is applied to the score before the best chunk is selected, so a negation mismatch can also push a borderline `WEAK_SUPPORT` claim down into `HALLUCINATION`.
+  </Accordion>
+
+  <Accordion title="Unsupported terms">
+    After a verdict is assigned, Halgorithem identifies any proper nouns or numbers in the claim that do not appear anywhere in the full set of truth document tokens. Synonym expansion via WordNet is applied first, so a term is only flagged as unsupported if neither it nor any of its synonyms appear in the truth token set.
+
+    ```python
+    def get_unsupported_terms(self, claim, all_truth_tokens):
+        claim_tokens = set(self.tokenize(claim))
+        unsupported = {
+            t for t in claim_tokens
+            if t not in all_truth_tokens
+            and not (self.get_synonyms(t) & all_truth_tokens)
+        }
+        doc = nlp(claim)
+        # only proper nouns and numbers are real hallucination signals
+        content = {
+            t.lemma_.lower() for t in doc
+            if t.pos_ in {"PROPN", "NUM"} and not t.is_stop
+        }
+        return sorted(t for t in unsupported if t in content or (t.isdigit() and len(t) != 4))
+    ```
+
+    Four-digit numbers are excluded from the digit check because they are likely years, which are already handled by the number-conflict skip logic. The `unsupported_terms` list is included in every result dict regardless of the final status.
+  </Accordion>
+
+  <Accordion title="MATH claim verification">
+    Claims that contain arithmetic operators (`+`, `-`, `*`, `/`, `%`), an `=` sign, or a percentage expression are classified as `MATH` claims and verified symbolically rather than semantically.
+
+    `verify_math_claim()` splits the claim on `=`, evaluates both sides using `sympy`'s `parse_expr()`, and checks whether the two values are within a relative tolerance of `1e-6` using `numbers_close()`.
+
+    ```python
+    def verify_math_claim(self, claim):
+        parts = claim.split("=", 1)
+        left, right = safe_eval(parts[0].strip()), safe_eval(parts[1].strip())
+        if numbers_close(left, right):
+            return {"status": "SUPPORTED", "claim": claim, "type": "MATH"}
+        return {"status": "CONTRADICTION", "claim": claim, "type": "MATH",
+                "expected": left, "got": right}
+    ```
+
+    MATH claims bypass the chunk-scoring pipeline entirely. If `sympy` cannot parse the expression, the result status is `ERROR`.
+  </Accordion>
+</AccordionGroup>
+
+## Result dict structure
+
+Every entry in the list returned by `compare_to_docs()` or `compare_to_files()` follows this structure:
+
+```python
+{
+    "claim_id": 1,               # sequential index within the AI output
+    "type": "SOURCE",            # "SOURCE" or "MATH"
+    "status": "SUPPORTED",       # SUPPORTED | WEAK_SUPPORT | CONTRADICTION | HALLUCINATION
+    "claim": "The CEO joined in 2014.",
+    "score": 0.72,               # adjusted cosine similarity (0.0–1.0)
+    "matched_source": "facts.txt",  # file path of the best-matching document
+    "matched_chunk_id": 3,       # chunk index within that document
+    "chunk_text": "He became CEO in 2014 after ...",  # raw text of the matched chunk
+    "unsupported_terms": [],     # proper nouns / numbers not found in truth docs
+    "reason": None,              # human-readable reason for CONTRADICTION or HALLUCINATION
+    "ai_numbers": None,          # numbers extracted from the claim (number conflicts only)
+    "truth_numbers": None,       # numbers from the matched chunk (number conflicts only)
+}
+```
+
+`reason`, `ai_numbers`, and `truth_numbers` are only populated when relevant. `matched_source`, `matched_chunk_id`, and `chunk_text` are `None` when no chunk was found (status `HALLUCINATION` with no matching chunk).

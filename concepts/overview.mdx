@@ -1,0 +1,58 @@
+---
+title: "How Halgorithem's hallucination detection pipeline works"
+description: "A walkthrough of the full pipeline: from loading truth documents and chunking text to scoring each claim and returning a final verdict."
+---
+
+Halgorithem detects hallucinations through a multi-stage pipeline — truth documents are chunked, AI output is split into claims, and each claim is scored against the nearest matching chunks. No external AI model is involved at any stage; every decision is made by NLP tools and rule-based logic running locally.
+
+<Steps>
+  <Step title="Load truth documents">
+    Files or inline text strings are read and passed through `clean_text()`, which strips Markdown, normalises Unicode and whitespace, removes select punctuation, and converts to ASCII. You can supply file paths via `compare_to_files()` or raw strings via `compare_to_docs()`.
+  </Step>
+  <Step title="Chunk documents">
+    Each cleaned document is split into overlapping sentence chunks. The number of sentences per chunk is controlled by `sentences_per_chunk` (default `2`), and `sentence_overlap` (default `1`) determines how many sentences are shared between consecutive chunks. Overlap ensures that claims spanning a sentence boundary still have a matching chunk.
+  </Step>
+  <Step title="Encode chunks">
+    Every chunk is encoded to a fixed-length semantic embedding using SentenceTransformer `all-MiniLM-L6-v2`. These embeddings are computed once and stored on the chunk object, so each claim can be compared against all chunks without re-encoding the documents.
+  </Step>
+  <Step title="Split AI output into claims">
+    The AI response is cleaned and then segmented into individual sentences by `pysbd` (Python Sentence Boundary Disambiguation), which handles abbreviations, decimal numbers, and other edge cases that trip up naive split-on-period approaches.
+  </Step>
+  <Step title="Filter meaningful claims">
+    Trivial or summary sentences are discarded before scoring. A claim is skipped if it has fewer than four tokens, ends with a list-intro word (e.g. "following"), has a demonstrative subject ("this", "these"), uses an interpretive root verb ("highlight", "suggest", "indicate"), or contains no named entity, number, or proper noun to anchor it.
+  </Step>
+  <Step title="Score each claim">
+    Each remaining claim is encoded and compared against all chunk embeddings via cosine similarity. The raw score is then adjusted: a **+0.10 bonus** is applied when the claim's numbers are a subset of the chunk's numbers, and a **−0.30 penalty** is applied when a negation mismatch is detected. See [Semantic similarity scoring](/concepts/scoring) for full details.
+  </Step>
+  <Step title="Return verdicts">
+    Based on the final adjusted score and any detected conflicts, each claim is assigned one of four statuses: **SUPPORTED**, **WEAK_SUPPORT**, **CONTRADICTION**, or **HALLUCINATION**. See [Claim verification and status types](/concepts/claim-verification) for the exact thresholds and conflict rules.
+  </Step>
+</Steps>
+
+## Claim types
+
+Before scoring, Halgorithem classifies every claim as one of two types:
+
+- **SOURCE claims** — the default. The claim is checked semantically against the chunked truth documents.
+- **MATH claims** — triggered when the claim contains an arithmetic operator (`+`, `-`, `*`, `/`, `%`), an `=` sign, or a percentage expression. These claims are verified by evaluating both sides of the equation with `sympy` rather than by semantic similarity.
+
+The regex that identifies MATH claims is:
+
+```python
+re.search(r"\d+\s*[\+\-\*/%]\s*\d+|(?<!\w)=(?!\w)|\d+\s*(percent|%)", claim.lower())
+```
+
+<Note>
+  No AI model is used during verification. Every verdict is produced by SentenceTransformer embeddings, spaCy NLP, negspacy negation detection, quantulum3 number extraction, and sympy symbolic evaluation — all running locally without any network calls.
+</Note>
+
+## What to read next
+
+<CardGroup cols={2}>
+  <Card title="Claim verification and status types" icon="shield-check" href="/concepts/claim-verification">
+    How each claim is classified into SUPPORTED, WEAK_SUPPORT, CONTRADICTION, or HALLUCINATION — including number conflict and negation mismatch detection.
+  </Card>
+  <Card title="Semantic similarity scoring" icon="chart-line" href="/concepts/scoring">
+    How cosine similarity is computed, what score adjustments are applied, and how the threshold parameter affects results.
+  </Card>
+</CardGroup>

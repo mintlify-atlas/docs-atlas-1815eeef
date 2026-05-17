@@ -1,0 +1,110 @@
+---
+title: "Math utilities: safe_eval and numbers_close reference"
+description: "Reference for the symbolic math functions in Halgorithem.math_utils — expression evaluation and numeric comparison used for MATH claim verification."
+---
+
+The `Halgorithem.math_utils` module provides symbolic math evaluation using sympy, used internally when Halgorithem classifies a claim as type `MATH` and needs to verify arithmetic correctness.
+
+<Note>
+  These functions are internal utilities. Most users will not call them directly — the `Halgorithm` class handles `MATH` claims automatically through `compare_to_docs()`. Refer to this page if you need to understand the verification logic or reuse the functions in your own pipeline.
+</Note>
+
+## Functions
+
+### safe_eval
+
+```python
+safe_eval(expr: str) -> float
+```
+
+Parses and evaluates a mathematical expression string using sympy. Supports implicit multiplication via the `implicit_multiplication_application` transformation.
+
+<ParamField path="expr" type="str" required>
+  A string containing a mathematical expression, such as `"2 + 2"`, `"100 * 1.05"`, or `"2x"` (implicit multiplication).
+</ParamField>
+
+<ResponseField name="return" type="float">
+  The evaluated result as a Python `float`, produced by calling `.evalf()` on the sympy expression.
+</ResponseField>
+
+Raises `ValueError` if the expression cannot be parsed.
+
+```python
+from Halgorithem.math_utils import safe_eval
+
+safe_eval("2 + 2")       # => 4.0
+safe_eval("100 * 1.05")  # => 105.0
+safe_eval("2x")          # implicit multiplication => depends on context
+```
+
+---
+
+### numbers_close
+
+```python
+numbers_close(left: float, right: float, rel_tol=1e-6) -> bool
+```
+
+Compares two floats using sympy's exact arithmetic to determine whether they are within a relative tolerance of each other.
+
+The comparison formula is:
+
+```
+|left - right| <= rel_tol * max(|left|, |right|, 1)
+```
+
+The `max(..., 1)` floor prevents the tolerance from collapsing to zero when both values are very small.
+
+<ParamField path="left" type="float" required>
+  The first number to compare.
+</ParamField>
+
+<ParamField path="right" type="float" required>
+  The second number to compare.
+</ParamField>
+
+<ParamField path="rel_tol" type="float" default="1e-6">
+  Relative tolerance. The default `1e-6` is appropriate for most floating-point rounding differences. Increase this value if you need a looser match (e.g. for rounded figures).
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  `True` if the two values are within the relative tolerance of each other, `False` otherwise.
+</ResponseField>
+
+```python
+from Halgorithem.math_utils import numbers_close
+
+numbers_close(4.0, 4.000001)  # => True (within tolerance)
+numbers_close(4.0, 4.1)       # => False
+```
+
+---
+
+## How MATH claim verification works
+
+When `Halgorithm.compare_to_docs()` encounters a claim classified as type `MATH`, it calls `verify_math_claim()` in `core.py`, which uses both functions above:
+
+1. The claim string is split on `=` — for example `"2 + 2 = 4"` becomes `["2 + 2", "4"]`.
+2. Both sides are passed to `safe_eval()` to produce float values.
+3. `numbers_close()` checks whether the two values agree within the default `1e-6` relative tolerance.
+4. The result is returned as a structured dict:
+
+| Outcome | Status |
+|---|---|
+| Values match within tolerance | `SUPPORTED` |
+| Values do not match | `CONTRADICTION` |
+| No `=` found in claim | `UNKNOWN` |
+| `safe_eval()` raises | `ERROR` |
+
+```python
+# Internal flow — you do not need to call this directly
+verify_math_claim("2 + 2 = 4")
+# => {"status": "SUPPORTED", "claim": "2 + 2 = 4", "type": "MATH"}
+
+verify_math_claim("2 + 2 = 5")
+# => {"status": "CONTRADICTION", "claim": "2 + 2 = 5", "type": "MATH",
+#     "expected": 4.0, "got": 5.0}
+
+verify_math_claim("addition is useful")
+# => {"status": "UNKNOWN", "claim": "addition is useful", "reason": "No expression found"}
+```

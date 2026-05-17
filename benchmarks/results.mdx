@@ -1,0 +1,63 @@
+---
+title: "Halgorithem benchmark results: accuracy across topics"
+description: "Real-world accuracy data for Halgorithem across topics including Microsoft, JWST, Apple, and Elon Musk, measured against Wikipedia sources."
+---
+
+These benchmarks measure Halgorithem's ability to correctly classify claims extracted from AI-generated text about various topics. Each topic's claims are checked against Wikipedia source pages and sorted into four categories: SUPPORTED, WEAK_SUPPORT, CONTRADICTION, and HALLUCINATION. The results below reflect the library's performance without any AI models in the detection pipeline — only semantic similarity, named-entity matching, and number conflict detection.
+
+## Real-world benchmark results
+
+The following table shows results from running Halgorithem against AI-generated summaries on four distinct topics, each verified against multiple Wikipedia pages.
+
+| Topic | Sources | Supported | Weak | Contradictions | Hallucinations |
+|---|---|---|---|---|---|
+| Microsoft / Satya Nadella | 5 Wikipedia pages | 3/4 | 1/4 | 0 | 0 |
+| James Webb Space Telescope | 3 Wikipedia pages | 5/6 | 1/6 | 0 | 1\* |
+| Apple / Tim Cook | 3 Wikipedia pages | 3/3 | 0/3 | 0 | 0 |
+| Elon Musk / Twitter | 4 Wikipedia pages | 2/2 | 0/2 | 0 | 0 |
+
+\*The JWST result flagged the $10B cost claim as a hallucination because that figure was not present in the scraped source text — it is UNVERIFIABLE, not a true hallucination.
+
+<Note>
+The James Webb Space Telescope false positive is a known edge case. The $10B program cost is a widely reported fact, but it did not appear in the three Wikipedia pages that were scraped as sources. Halgorithem correctly flags the claim as unverifiable given its input, rather than inventing a verdict.
+</Note>
+
+<Info>
+When a true fact is absent from your source documents, Halgorithem may classify it as HALLUCINATION. This is expected behavior — the library can only reason about what is present in the sources you provide. You can reduce false positives by expanding your source set or raising the `threshold` parameter to require stronger semantic similarity before flagging a claim.
+</Info>
+
+## Unit benchmark results
+
+The unit benchmark in `bench.py` tests 8 hand-labeled claims about the history of the BASIC programming language. These claims are verified against two local truth files: `sources/basic.txt` and `sources/basic2.txt`.
+
+### Test cases by category
+
+| Category | Count | Example claim |
+|---|---|---|
+| SUPPORTED | 3 | `"BASIC was developed in 1964"` |
+| WEAK_SUPPORT | 2 | `"BASIC made programming easier for students"` |
+| HALLUCINATION | 2 | `"BASIC was created by NASA"` |
+| CONTRADICTION | 1 | `"BASIC was developed in 1972"` |
+
+The SUPPORTED claims have strong semantic overlap with source chunks and their numbers match exactly. The WEAK_SUPPORT claims are related to the topic but lack a specific verifiable anchor in the source text. The two HALLUCINATION claims introduce fabricated facts (NASA, Germany) with no support in the source. The CONTRADICTION claim uses the correct subject but a wrong year, triggering number conflict detection.
+
+### Accuracy metric
+
+The benchmark computes accuracy as:
+
+```python
+accuracy = (correct / total) * 100
+```
+
+A prediction is `correct` when the status returned by `compare_with_reasoning` exactly matches the expected label for that claim. Any mismatch is printed to stdout with the claim text, expected label, predicted label, and similarity score.
+
+```
+Benchmark Report
+================================================================================
+
+================================================================================
+Accuracy: 100.0%
+================================================================================
+```
+
+A perfect run produces no mismatch lines between the two separator rows. If any claim is mislabeled, its details appear between those rows so you can inspect the score and adjust the threshold accordingly.

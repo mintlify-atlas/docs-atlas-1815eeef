@@ -1,0 +1,122 @@
+---
+title: "Installing Halgorithem: Full Setup and Dependencies"
+description: "Set up Halgorithem from source: covers Python version requirements, all dependencies, and the spaCy model download needed to run verification."
+---
+
+This page covers every requirement and setup step for running Halgorithem. The library is currently distributed as source code, so installation means cloning the repository and installing Python dependencies manually. A virtual environment is strongly recommended to avoid conflicts with other projects.
+
+## Requirements
+
+- **Python 3.8 or higher** — Halgorithem uses type annotations and f-strings that require Python 3.8+.
+- **Virtual environment** — isolate the project's dependencies from your system Python.
+- **git** — required to clone the repository.
+
+<Warning>
+  The `requirements.txt` file in the repository does not list all runtime dependencies. The full set of packages needed — including `sentence-transformers`, `negspacy`, `quantulum3`, `sympy`, `markdown-it-py`, and `nltk` — must be installed separately. The steps below cover the complete install. Additionally, `Halgorithem/nlp.py` loads `en_core_web_lg` (the large spaCy model) at runtime, not `en_core_web_sm` as shown in the README. Download the large model to avoid a load error.
+</Warning>
+
+## Installation steps
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/TangibleResearch/Halgorithem.git
+    cd Halgorithem
+    ```
+  </Step>
+
+  <Step title="Create and activate a virtual environment">
+    ```bash
+    python -m venv venv
+    source venv/bin/activate   # Windows: venv\Scripts\activate
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    <CodeGroup>
+
+    ```bash pip (requirements.txt + extras)
+    # Install packages listed in requirements.txt
+    pip install -r requirements.txt
+
+    # Install packages used by the library but missing from requirements.txt
+    pip install sentence-transformers negspacy quantulum3 sympy markdown-it-py nltk
+    ```
+
+    ```bash manual (all packages)
+    pip install \
+      clean-text==0.7.1 \
+      beautifulsoup4==4.14.3 \
+      flask==3.1.2 \
+      html2text==2025.4.15 \
+      nltk==3.9.4 \
+      openai==2.13.0 \
+      pysbd==0.3.4 \
+      requests==2.32.5 \
+      scikit-learn==1.8.0 \
+      spacy==3.8.14 \
+      textacy==0.13.0 \
+      sentence-transformers \
+      negspacy \
+      quantulum3 \
+      sympy \
+      markdown-it-py
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Download the spaCy language model">
+    The library loads `en_core_web_lg` at import time. Download it before running any verification:
+
+    ```bash
+    python -m spacy download en_core_web_lg
+    ```
+  </Step>
+
+  <Step title="Download the NLTK WordNet corpus">
+    WordNet is used for synonym expansion during claim scoring. Download it once from a Python session:
+
+    ```python
+    import nltk
+    nltk.download("wordnet")
+    ```
+  </Step>
+</Steps>
+
+## What each key package does
+
+| Package | Role in Halgorithem |
+|---|---|
+| `spacy` + `en_core_web_lg` | Tokenization, POS tagging, named entity recognition, and dependency parsing for claim filtering |
+| `sentence-transformers` | Generates semantic embeddings (`all-MiniLM-L6-v2`) used to score claims against truth document chunks |
+| `pysbd` | Sentence boundary detection — splits AI output into individual claims |
+| `nltk` + WordNet | Synonym expansion: lets a claim token match source tokens with the same meaning |
+| `negspacy` | Negation detection — flags claims where the AI inverts the meaning of a source statement |
+| `quantulum3` | Extracts numbers and quantities from text (handles "seven billion", "$4.2B", ordinals) |
+| `sympy` | Evaluates and verifies math claims such as `2 + 2 = 4` |
+| `textacy` | Unicode normalization and text preprocessing |
+| `clean-text` | Strips URLs, emails, and non-ASCII characters from raw text |
+| `markdown-it-py` | Converts Markdown-formatted AI output to plain text before processing |
+| `scikit-learn` | Provides the English stop words list used during tokenization |
+| `beautifulsoup4`, `html2text`, `requests` | Web scraping: fetch and convert HTML pages to plain text for use as truth sources |
+| `flask` | Powers the optional web server interface |
+| `openai` | Used only by the `Engine` class to generate AI responses — not needed for standalone verification |
+
+## Verify the install
+
+Run the benchmark to confirm everything is working:
+
+```bash
+python bench.py
+```
+
+A passing run prints an accuracy score at the end:
+
+```
+================================================================================
+Accuracy: 100.0%
+================================================================================
+```
+
+If spaCy or a missing package causes an import error, re-check that you completed all five installation steps above.

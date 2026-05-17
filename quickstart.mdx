@@ -1,81 +1,120 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
-icon: 'rocket'
+title: "Quickstart: Run Your First AI Hallucination Checks"
+description: "Install Halgorithem, set up your environment, and run your first hallucination-detection check against a local truth document in minutes."
 ---
 
-## Get started in three steps
+This guide walks you through cloning the repository, setting up a Python environment, and running a verification check against a local truth file. By the end you will have a working script that extracts claims from AI-generated text and prints a per-claim report.
 
-Get your documentation site running locally and make your first customization.
+<Note>
+  The `Engine` class in `engine.py` calls the OpenAI API to generate responses. If you only want to verify existing AI output — not generate it — you can use the `Halgorithm` class directly and no API key is required.
+</Note>
 
-### Step 1: Set up your local environment
+<Steps>
+  <Step title="Clone the repository and create a virtual environment">
+    Clone the project and isolate its dependencies in a virtual environment:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```bash
+    git clone https://github.com/TangibleResearch/Halgorithem.git
+    cd Halgorithem
+    python -m venv venv
+    source venv/bin/activate   # Windows: venv\Scripts\activate
+    ```
+  </Step>
 
-### Step 2: Deploy your changes
+  <Step title="Install dependencies">
+    Install all required packages from the project's requirements file:
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```bash
+    pip install -r requirements.txt
+    ```
+  </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Step title="Download the spaCy language model">
+    Halgorithem uses spaCy for tokenization and entity recognition. Download the large English model:
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```bash
+    python -m spacy download en_core_web_lg
+    ```
+  </Step>
 
-### Step 3: Go live
+  <Step title="Write a verification script">
+    Create a file called `verify.py` in the project root. This example loads a local truth document, passes AI output to `compare_to_files()`, and prints a report:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```python
+    from Halgorithem import Halgorithm
+
+    algo = Halgorithm(sentences_per_chunk=2, sentence_overlap=1)
+
+    # The AI-generated text you want to verify
+    ai_output = (
+        "BASIC was developed in 1964 at Dartmouth College. "
+        "It was created by NASA to help students learn programming. "
+        "BASIC was interpreted in early versions and used on time-sharing systems."
+    )
+
+    # Compare claims against one or more local truth files
+    results = algo.compare_to_files(
+        truth_file_paths=["sources/basic.txt", "sources/basic2.txt"],
+        ai_output=ai_output,
+        threshold=0.30,
+    )
+
+    algo.print_report(results)
+    ```
+
+    You can also pass pre-loaded document dicts using `compare_to_docs()` if you have already read the text into memory:
+
+    ```python
+    docs = algo.load_files(["sources/basic.txt", "sources/basic2.txt"])
+
+    results = algo.compare_to_docs(
+        truth_docs=docs,
+        ai_output=ai_output,
+        threshold=0.30,
+    )
+
+    algo.print_report(results)
+    ```
+  </Step>
+
+  <Step title="Run it and read the output">
+    Execute the script:
+
+    ```bash
+    python verify.py
+    ```
+
+    You will see output similar to this:
+
+    ```
+    Halgorithm Report
+    ================================================================================
+    Strongly supported: 2  Weak: 1  Issues: 1
+    Confidence: 68.75%  —  not reliable
+    ================================================================================
+    Claim #2 | HALLUCINATION | score 0.183
+
+    BASIC was created by NASA to help students learn programming.
+
+    Reason: No matching chunk found
+    Unsupported terms: NASA
+    ```
+
+    Each flagged claim shows the status, similarity score, and unsupported terms so you can trace exactly why the claim failed.
+  </Step>
+</Steps>
+
+<Tip>
+  The `threshold` parameter controls how strict verification is. The default is `0.30`. Lowering it flags more claims as hallucinations; raising it is more permissive. Start at `0.30` and adjust based on how much noise appears in your results.
+</Tip>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="How it works" icon="diagram-project" href="/concepts/overview">
+    Understand the full claim-extraction and scoring pipeline.
+  </Card>
+  <Card title="AI pipeline integration" icon="plug" href="/guides/ai-pipeline-integration">
+    Add verification to LangGraph, CrewAI, PydanticAI, or AutoGen workflows.
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

@@ -1,0 +1,81 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Halgorithem",
+  "projectDescription": "A Python library that detects AI hallucinations by parsing AI output into semantic trees and comparing claims against truth source documents using NLP and semantic embeddings.",
+  "theme": "luma",
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart", "installation"]
+          },
+          {
+            "group": "How It Works",
+            "pages": ["concepts/overview", "concepts/claim-verification", "concepts/scoring"]
+          },
+          {
+            "group": "Guides",
+            "pages": ["guides/python-integration", "guides/ai-pipeline-integration", "guides/web-scraping", "guides/tui"]
+          },
+          {
+            "group": "Benchmarks & Results",
+            "pages": ["benchmarks/results", "benchmarks/running"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": ["api/halgorithm", "api/engine", "api/claim-results"]
+          },
+          {
+            "group": "Modules",
+            "pages": ["api/text-processing", "api/web-scraper", "api/math-utils"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "No AI required for detection — uses NLP and semantic embeddings",
+    "Sentence-level claim extraction and verification",
+    "Semantic similarity scoring via SentenceTransformers (all-MiniLM-L6-v2)",
+    "Number conflict detection (catches numeric hallucinations)",
+    "Negation mismatch detection using negspacy",
+    "Web scraping for URL-based truth sources (including Wikipedia API)",
+    "Math claim verification via sympy",
+    "Integrates with LangGraph, CrewAI, PydanticAI, and AutoGen pipelines",
+    "Interactive TUI powered by Rich",
+    "Four claim statuses: SUPPORTED, WEAK_SUPPORT, CONTRADICTION, HALLUCINATION"
+  ],
+  "publicApiSurface": [
+    "Halgorithm(sentences_per_chunk, sentence_overlap)",
+    "Halgorithm.compare_to_docs(truth_docs, ai_output, threshold)",
+    "Halgorithm.compare_to_files(truth_file_paths, ai_output, threshold)",
+    "Halgorithm.compare_with_reasoning(truth_file_paths, ai_output, threshold)",
+    "Halgorithm.print_report(results)",
+    "Halgorithm.load_files(file_paths)",
+    "Halgorithm.chunk_text(text, doc_id, source_name)",
+    "Halgorithm.split_sentences(text)",
+    "Halgorithm.support_score(claim, chunk)",
+    "Engine(model, sentences_per_chunk, sentence_overlap, timeout)",
+    "Engine.run(prompt, urls, truth_file_paths, threshold)",
+    "Engine.generate(prompt, source_docs)",
+    "Engine.verify(ai_output, source_docs, threshold)",
+    "Engine.scrape_urls(urls)",
+    "Engine.load_truth_files(file_paths)",
+    "engine.run(prompt, urls, truth_file_paths, threshold)",
+    "engine.generate(prompt, urls, truth_file_paths)",
+    "engine.verify(ai_output, urls, truth_file_paths, threshold)",
+    "WebScraper(list_of_urls)",
+    "WebScraper.scrape()"
+  ]
+}

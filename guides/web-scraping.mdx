@@ -1,0 +1,87 @@
+---
+title: "Using web pages and Wikipedia articles as truth sources"
+description: "Scrape web pages and Wikipedia articles as truth source documents to check AI claims against live web content without manually preparing local text files."
+---
+
+Halgorithem can scrape web pages — including Wikipedia — to use as truth source documents. This lets you check AI-generated claims against live web content without preparing text files in advance. You provide a list of URLs, and Halgorithem fetches, cleans, and loads the content automatically.
+
+## How scraping works
+
+The `WebScraper` class in `Halgorithem/web.py` handles fetching. You can instantiate it directly, but in most cases you will use `Engine.scrape_urls()`, which wraps it and returns structured dicts ready to pass to `verify()`.
+
+### Wikipedia URLs
+
+When a URL contains `wikipedia.org/wiki/`, `WebScraper` uses the Wikipedia REST API (`/api/rest_v1/page/summary/{title}`) instead of scraping HTML. This returns clean prose text with no markup, navigation, or boilerplate.
+
+<Tip>
+  Use Wikipedia URLs wherever possible. The REST API returns clean, structured text that produces more accurate verification results than scraping a generic HTML page.
+</Tip>
+
+### Non-Wikipedia URLs
+
+For all other URLs, `WebScraper` fetches the raw HTML, removes `nav`, `footer`, `script`, `style`, `header`, and `aside` elements using BeautifulSoup, then converts the remaining HTML to plain text.
+
+<Warning>
+  Non-Wikipedia pages are capped at 8,000 characters after conversion. Content beyond this limit is silently truncated and will not be checked against.
+</Warning>
+
+<Note>
+  Each URL has a 5-second request timeout. If a URL times out or returns an HTTP error, it is skipped and a warning is printed to stdout. No exception is raised.
+</Note>
+
+## Using `Engine.scrape_urls()`
+
+`Engine.scrape_urls(urls)` returns a list of dicts, one per successfully scraped URL:
+
+```python
+[
+    {"file_id": 1, "file_path": "https://en.wikipedia.org/wiki/Apollo_11", "text": "..."},
+    {"file_id": 2, "file_path": "https://www.britannica.com/event/Apollo-11", "text": "..."},
+]
+```
+
+This is the same format as `load_truth_files()`, so you can pass the result directly to `verify()` or combine it with file sources.
+
+## Running the full pipeline with URLs
+
+Pass URLs to `Engine.run()` and it handles scraping, generation, and verification in one call:
+
+```python
+from engine import Engine
+
+eng = Engine()
+result = eng.run(
+    prompt="What was the Apollo 11 mission?",
+    urls=[
+        "https://en.wikipedia.org/wiki/Apollo_11",
+        "https://www.britannica.com/event/Apollo-11"
+    ],
+    threshold=0.30
+)
+print(result["summary"])
+```
+
+`result["sources"]` contains the list of URLs that were successfully scraped and used as truth documents.
+
+## Mixing URLs and local files
+
+You can combine URL sources and local files in the same call. Halgorithem merges them into a single pool of truth documents:
+
+```python
+result = eng.run(
+    prompt="...",
+    urls=["https://en.wikipedia.org/wiki/Apollo_11"],
+    truth_file_paths=["local_notes.txt"],
+    threshold=0.30
+)
+```
+
+To load sources separately for use with `verify()`:
+
+```python
+source_docs = (
+    eng.scrape_urls(["https://en.wikipedia.org/wiki/Apollo_11"])
+    + eng.load_truth_files(["local_notes.txt"])
+)
+verification = eng.verify(ai_output=my_text, source_docs=source_docs, threshold=0.30)
+```

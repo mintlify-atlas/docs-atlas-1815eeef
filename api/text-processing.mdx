@@ -1,0 +1,186 @@
+---
+title: "Text processing module: NLP utility functions reference"
+description: "Reference for the NLP utility functions in Halgorithem.text_processing — tokenization, lemmatization, entity extraction, synonym lookup, and more."
+---
+
+The `Halgorithem.text_processing` module provides NLP utility functions used internally by the `Halgorithm` class — but also accessible directly if you need lower-level text analysis.
+
+## Functions
+
+### clean_text
+
+```python
+clean_text(text: str) -> str
+```
+
+Strips Markdown formatting, normalizes unicode and whitespace, removes select punctuation, and applies ASCII conversion with URL/email removal.
+
+<ParamField path="text" type="str" required>
+  The raw input string to clean.
+</ParamField>
+
+<ResponseField name="return" type="str">
+  Cleaned plain-text string. Guaranteed to end with `.`, `!`, or `?`.
+</ResponseField>
+
+Processing steps applied in order:
+
+1. Strips Markdown via `strip_markdown()` (powered by markdown-it-py)
+2. Normalizes unicode, whitespace, and quotation marks via textacy
+3. Removes `(`, `)`, `;`, `:`, and `"` punctuation
+4. Appends a period if the text does not already end with `.`, `!`, or `?`
+5. Applies clean-text normalization: ASCII conversion, URL removal, email removal
+
+---
+
+### tokenize
+
+```python
+tokenize(text: str) -> list[str]
+```
+
+Tokenizes text using spaCy, filtering out punctuation, whitespace, and stop words.
+
+<ParamField path="text" type="str" required>
+  The input string to tokenize.
+</ParamField>
+
+<ResponseField name="return" type="list[str]">
+  List of lowercase token strings with punctuation, spaces, and sklearn `ENGLISH_STOP_WORDS` removed.
+</ResponseField>
+
+---
+
+### lemmatize_tokens
+
+```python
+lemmatize_tokens(text: str) -> list[str]
+```
+
+Applies the same filtering as `tokenize()` but returns the lemmatized form of each token rather than the surface form. Pronoun lemmas (`-PRON-`) are excluded.
+
+<ParamField path="text" type="str" required>
+  The input string to lemmatize.
+</ParamField>
+
+<ResponseField name="return" type="list[str]">
+  List of lowercase lemma strings, filtered the same way as `tokenize()` and with `-PRON-` lemmas removed.
+</ResponseField>
+
+---
+
+### extract_numbers
+
+```python
+extract_numbers(text: str) -> list[str]
+```
+
+Extracts numeric quantities from text, handling written-out numbers, currency shorthands, and ordinals via quantulum3, with a regex fallback for bare digits.
+
+<ParamField path="text" type="str" required>
+  The input string to extract numbers from.
+</ParamField>
+
+<ResponseField name="return" type="list[str]">
+  Deduplicated list of number strings. quantulum3 results (e.g. `"25000000000.0"` for `"$25 billion"`) appear first; bare digits not caught by quantulum3 are appended from the regex fallback `\b\d+(?:\.\d+)?\b`.
+</ResponseField>
+
+---
+
+### extract_entities
+
+```python
+extract_entities(text: str) -> list[tuple[str, ...]]
+```
+
+Runs spaCy named entity recognition over the text and returns normalized entity tokens.
+
+<ParamField path="text" type="str" required>
+  The input string to extract entities from.
+</ParamField>
+
+<ResponseField name="return" type="list[tuple[str, ...]]">
+  List of tuples. Each tuple contains the lowercase, non-digit tokens of one recognized entity span (stop words and punctuation are removed via `tokenize()`).
+</ResponseField>
+
+---
+
+### get_synonyms
+
+```python
+get_synonyms(word: str) -> set[str]
+```
+
+Returns WordNet synonyms for a word via NLTK. Results are cached with `lru_cache(maxsize=4096)`. Underscores in lemma names are replaced with spaces.
+
+<ParamField path="word" type="str" required>
+  The word to look up synonyms for.
+</ParamField>
+
+<ResponseField name="return" type="set[str]">
+  Set of synonym strings. Returns an empty set if the WordNet corpus is unavailable.
+</ResponseField>
+
+<Note>
+  Synonym expansion depends on the `WORDNET_AVAILABLE` flag set at import time in `nlp.py`. If the WordNet corpus has not been downloaded (`nltk.download("wordnet")`), `WORDNET_AVAILABLE` is `False` and `get_synonyms()` silently returns an empty set without raising an error.
+</Note>
+
+---
+
+### has_negation_mismatch
+
+```python
+has_negation_mismatch(claim: str, chunk_text: str) -> bool
+```
+
+Detects whether a claim and a reference chunk disagree on negation polarity. Uses negspacy to identify negated tokens in each text.
+
+<ParamField path="claim" type="str" required>
+  The claim text to check.
+</ParamField>
+
+<ParamField path="chunk_text" type="str" required>
+  The reference chunk text to compare against.
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  `True` if one text contains negated tokens and the other does not — indicating a polarity mismatch.
+</ResponseField>
+
+---
+
+### strip_markdown
+
+```python
+strip_markdown(text: str) -> str
+```
+
+Parses a Markdown string to plain text using markdown-it-py, extracting inline text, `code_inline`, `fence`, and `code_block` token content.
+
+<ParamField path="text" type="str" required>
+  The Markdown string to convert.
+</ParamField>
+
+<ResponseField name="return" type="str">
+  Plain text string. Returns the original `text` unchanged if no extractable tokens are found.
+</ResponseField>
+
+---
+
+## Code examples
+
+```python
+from Halgorithem.text_processing import clean_text, tokenize, extract_numbers, get_synonyms
+
+clean_text("**Apollo 11** launched on July 16, 1969.")
+# => "Apollo 11 launched on July 16 1969."
+
+tokenize("BASIC was developed in 1964 at Dartmouth College")
+# => ['basic', 'developed', '1964', 'dartmouth', 'college']
+
+extract_numbers("The mission cost $25 billion and lasted 8 days.")
+# => ['25000000000.0', '8']
+
+get_synonyms("fast")
+# => {'quick', 'rapid', 'speedy', ...}
+```

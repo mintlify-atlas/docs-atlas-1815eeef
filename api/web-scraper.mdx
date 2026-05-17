@@ -1,0 +1,83 @@
+---
+title: "WebScraper class: fetch and convert URLs to plain text"
+description: "Reference for the WebScraper class in Halgorithem.web — fetches and converts web pages and Wikipedia articles to plain text for use as truth source documents."
+---
+
+The `WebScraper` class in `Halgorithem.web` fetches and converts web pages to plain text for use as truth source documents. It handles both standard HTML pages and Wikipedia URLs with special treatment.
+
+## Constructor
+
+```python
+WebScraper(list_of_urls)
+```
+
+<ParamField path="list_of_urls" type="list[str]" required>
+  List of URLs to scrape. Each URL is processed in order when you call `scrape()`.
+</ParamField>
+
+## Methods
+
+### scrape
+
+```python
+scrape() -> None
+```
+
+Iterates over all URLs provided at construction time, fetches each one, converts it to plain text, and writes the result to a numbered text file in the current working directory.
+
+Output files are named `file0.txt`, `file1.txt`, and so on — the counter increments only on success. Failed URLs print a warning and are skipped without incrementing the counter.
+
+**Wikipedia URLs** (`wikipedia.org/wiki/`): instead of scraping the HTML page, `scrape()` calls the clean REST summary API at `https://en.wikipedia.org/api/rest_v1/page/summary/{title}` and extracts the `extract` field from the JSON response.
+
+**All other URLs**: fetches the page with BeautifulSoup, removes `nav`, `footer`, `script`, `style`, `header`, and `aside` tags, then converts the remaining HTML to markdown-style plain text via html2text.
+
+<Warning>
+  Content from non-Wikipedia URLs is capped at 8,000 characters. For lengthy reference pages this may truncate important information. Consider splitting long sources into multiple targeted URLs or using Wikipedia when a high-quality summary is available.
+</Warning>
+
+**Request details:**
+
+| Setting | Value |
+|---|---|
+| Timeout | 5 seconds per request |
+| User-Agent | `Mozilla/5.0 (compatible; HalgorithemBot/1.0)` |
+| Link/image handling | Links and images stripped from HTML output |
+
+**Error handling:** `Timeout`, `HTTPError`, and general `Exception` errors each print a warning message and continue to the next URL without raising.
+
+<Tip>
+  Prefer Wikipedia URLs when a topic has a good Wikipedia article. The REST summary API returns clean, well-structured text without the 8,000 character cap, and avoids JavaScript-heavy or paywalled pages that may return poor HTML.
+</Tip>
+
+## Direct usage
+
+```python
+from Halgorithem.web import WebScraper
+import os
+
+os.chdir("/tmp/my_sources")  # output files written to CWD
+scraper = WebScraper([
+    "https://en.wikipedia.org/wiki/Apollo_11",
+    "https://www.britannica.com/event/Apollo-11"
+])
+scraper.scrape()
+# creates: /tmp/my_sources/file0.txt, /tmp/my_sources/file1.txt
+```
+
+## Higher-level alternative: Engine.scrape_urls()
+
+For most use cases you should call `Engine.scrape_urls()` rather than using `WebScraper` directly. It manages a temporary directory, resets the file counter, and returns structured dicts instead of writing files you have to manage yourself.
+
+```python
+from engine import Engine
+
+eng = Engine()
+docs = eng.scrape_urls([
+    "https://en.wikipedia.org/wiki/Apollo_11"
+])
+# docs = [{"file_id": 1, "file_path": "https://...", "text": "..."}]
+```
+
+<Note>
+  Use `Engine.scrape_urls()` rather than instantiating `WebScraper` directly. The `Engine` wrapper handles temporary directory setup, counter state, and returns structured document dicts that integrate directly with `compare_to_docs()` and the rest of the Halgorithem pipeline.
+</Note>

@@ -1,0 +1,105 @@
+---
+title: "Using Halgorithem directly in your own Python scripts"
+description: "Use Halgorithem directly in Python — load truth files, call compare_to_docs(), and interpret verification results programmatically in your own scripts."
+---
+
+This guide covers using Halgorithem directly in your Python code. You can work at two levels: the low-level `Halgorithm` class, which handles chunking and comparison without any LLM calls, or the higher-level `Engine` class, which orchestrates scraping, generation, and verification end-to-end. Both expose the same underlying claim-checking logic.
+
+## Choosing an approach
+
+<Tabs>
+  <Tab title="Halgorithm class">
+    Use `Halgorithm` when you already have an AI-generated text and want to check it against a set of source documents — no LLM is involved.
+
+    ```python
+    from Halgorithem import Halgorithm
+
+    algo = Halgorithm(sentences_per_chunk=2, sentence_overlap=1)
+    docs = algo.load_files(["source.txt"])
+    results = algo.compare_to_docs(truth_docs=docs, ai_output="...", threshold=0.30)
+    algo.print_report(results)
+    ```
+
+    `load_files()` returns a list of dicts with `file_id`, `file_path`, and `text` keys. Pass that list directly to `compare_to_docs()`.
+
+    `print_report()` writes a formatted summary to stdout, including confidence score and details on every flagged claim.
+  </Tab>
+  <Tab title="Engine class">
+    Use `Engine` when you want Halgorithem to handle the full pipeline — scraping URLs, generating an AI response, and verifying it in one call.
+
+    ```python
+    from engine import Engine
+
+    eng = Engine()
+    result = eng.run(
+        prompt="What was the Apollo 11 mission?",
+        urls=["https://en.wikipedia.org/wiki/Apollo_11"],
+        threshold=0.30
+    )
+    print(result["summary"])
+    ```
+
+    `run()` returns a dict with `claims`, `summary`, `ai_output`, and `sources` keys.
+
+    <Note>
+      `Engine` calls the OpenAI API to generate a response. Set the `OPENAI_API_KEY` environment variable before running, or the client will raise an authentication error.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Top-level convenience functions
+
+`engine.py` also exports three module-level functions that share a single internal `Engine` instance. You can import them directly without instantiating a class:
+
+```python
+import engine
+
+# Full pipeline: scrape → generate → verify
+result = engine.run(prompt, urls, truth_file_paths, threshold)
+
+# Generate AI output only (no verification)
+ai_text = engine.generate(prompt, urls, truth_file_paths)
+
+# Verify existing AI output against sources
+verification = engine.verify(ai_output, urls, truth_file_paths, threshold)
+```
+
+Each function accepts `urls`, `truth_file_paths`, or both. At least one source must be provided, or a `ValueError` is raised.
+
+## Interpreting results
+
+`compare_to_docs()` returns a list of claim dicts. Each dict contains:
+
+- `status` — one of `SUPPORTED`, `WEAK_SUPPORT`, `CONTRADICTION`, or `HALLUCINATION`
+- `claim` — the sentence extracted from the AI output
+- `score` — cosine similarity score between the claim and the best matching chunk
+- `chunk_text` — the source chunk that best matched
+- `unsupported_terms` — proper nouns or numbers in the claim not found in any source
+- `reason` — set on `CONTRADICTION` claims (e.g. `"Number mismatch"`, `"Negation mismatch"`)
+
+Filter by status to find only problematic claims:
+
+```python
+hallucinations = [c for c in results if c["status"] == "HALLUCINATION"]
+contradictions = [c for c in results if c["status"] == "CONTRADICTION"]
+
+for claim in hallucinations:
+    print(claim["claim"])
+    print("Unsupported terms:", claim.get("unsupported_terms"))
+```
+
+Score thresholds follow this rule: `score >= 0.65` is `SUPPORTED`, `score >= threshold` (default `0.30`) is `WEAK_SUPPORT`, and anything below is `HALLUCINATION`.
+
+## Passing inline text as truth
+
+<Tip>
+  `compare_to_docs()` accepts a plain string or list of strings as `truth_docs` — you do not need to load files at all. This is useful when your source content is already in memory.
+
+  ```python
+  results = algo.compare_to_docs(
+      truth_docs="BASIC was developed in 1964 at Dartmouth College.",
+      ai_output="BASIC was invented in Germany in 1972.",
+      threshold=0.30,
+  )
+  ```
+</Tip>

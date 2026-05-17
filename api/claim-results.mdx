@@ -1,0 +1,151 @@
+---
+title: "Claim result dict: all fields returned by Halgorithem"
+description: "Full field-by-field reference for the claim result dicts returned by compare_to_docs, compare_to_files, and Engine.verify in Halgorithem."
+---
+
+Every method that verifies AI output returns a list of claim result dicts — one per extracted claim. This page documents every field in those dicts. The exact fields present depend on the claim's `type` and `status`.
+
+## Common fields
+
+These fields are present on every claim result regardless of type or status.
+
+<ResponseField name="claim_id" type="int" required>
+  1-indexed position of the claim in the AI output. Claims are numbered in the order they appear after sentence splitting. Claims filtered out by `is_meaningful_claim` are not included in results and do not consume claim IDs.
+</ResponseField>
+
+<ResponseField name="claim" type="str" required>
+  The extracted claim sentence as it appeared in the AI output, after cleaning.
+</ResponseField>
+
+<ResponseField name="status" type="str" required>
+  Verification outcome. One of:
+
+  | Value | Meaning |
+  |---|---|
+  | `SUPPORTED` | Cosine similarity ≥ 0.65 against at least one truth chunk |
+  | `WEAK_SUPPORT` | Cosine similarity ≥ threshold (default 0.30) but < 0.65 |
+  | `CONTRADICTION` | High similarity to a chunk that contradicts the claim (number or negation mismatch) |
+  | `HALLUCINATION` | No chunk scored above the threshold |
+</ResponseField>
+
+<ResponseField name="score" type="float" required>
+  Best cosine similarity score found across all truth chunks. Range is 0.0–1.0 for typical semantic similarity (technically -1.0 to 1.0 for cosine). A score of 0.0 indicates no matching chunk was found.
+</ResponseField>
+
+<ResponseField name="type" type="str" required>
+  Claim classification. One of:
+
+  | Value | Meaning |
+  |---|---|
+  | `SOURCE` | Verified by semantic similarity against truth document chunks |
+  | `MATH` | Contains an arithmetic expression that is evaluated directly (e.g. `2 + 2 = 4`) |
+</ResponseField>
+
+<ResponseField name="unsupported_terms" type="list[str]">
+  Proper nouns and numbers found in the claim that do not appear in any truth document token set (accounting for synonyms). An empty list means all verifiable terms were found in the truth docs. Only meaningful for `SOURCE` claims.
+</ResponseField>
+
+---
+
+## SOURCE claim fields
+
+Present on all `SOURCE` type claims (i.e., when `type` is `"SOURCE"`).
+
+<ResponseField name="matched_doc_id" type="int | null">
+  The `file_id` of the truth document whose chunk scored highest against this claim. `null` if no matching chunk was found (status will be `HALLUCINATION`).
+</ResponseField>
+
+<ResponseField name="matched_source" type="str | null">
+  The file path or URL of the best matching source document. Corresponds to the `file_path` field on the source document dict. `null` if no matching chunk was found.
+</ResponseField>
+
+<ResponseField name="matched_chunk_id" type="int | null">
+  The `chunk_id` within the matched source document. `null` if no matching chunk was found.
+</ResponseField>
+
+<ResponseField name="chunk_text" type="str">
+  The raw text of the best matching chunk. Empty string if no matching chunk was found.
+</ResponseField>
+
+---
+
+## CONTRADICTION-specific fields
+
+Present when `status` is `"CONTRADICTION"`.
+
+<ResponseField name="reason" type="str">
+  The detected contradiction type. One of:
+
+  | Value | Trigger condition |
+  |---|---|
+  | `"Number mismatch"` | A number in the claim is close in magnitude to a number in the matching chunk but not equal |
+  | `"Negation mismatch"` | The claim and the matching chunk differ in negation (one asserts, the other denies) |
+</ResponseField>
+
+<ResponseField name="ai_numbers" type="list[str]">
+  Numbers extracted from the claim. Present on `"Number mismatch"` contradictions. Each element is a string representation of the number as it appeared in the text.
+</ResponseField>
+
+<ResponseField name="truth_numbers" type="list[str]">
+  Numbers extracted from the best matching chunk. Present on `"Number mismatch"` contradictions.
+</ResponseField>
+
+---
+
+## MATH claim fields
+
+Present when `type` is `"MATH"` and `status` is `"CONTRADICTION"`.
+
+<ResponseField name="expected" type="float">
+  The evaluated value of the left-hand side of the expression (e.g. for `2 + 2 = 5`, `expected` is `4.0`).
+</ResponseField>
+
+<ResponseField name="got" type="float">
+  The evaluated value of the right-hand side of the expression (e.g. for `2 + 2 = 5`, `got` is `5.0`).
+</ResponseField>
+
+---
+
+## Full example
+
+The following shows a complete claim result dict for a `SOURCE` claim with a number mismatch contradiction:
+
+```python
+{
+    "claim_id": 3,
+    "claim": "BASIC was developed in 1972.",
+    "status": "CONTRADICTION",
+    "score": 0.712,
+    "type": "SOURCE",
+    "matched_doc_id": 1,
+    "matched_source": "sources/basic.txt",
+    "matched_chunk_id": 2,
+    "chunk_text": "BASIC was developed in 1964 at Dartmouth College by John Kemeny and Thomas Kurtz.",
+    "unsupported_terms": [],
+    "reason": "Number mismatch",
+    "ai_numbers": ["1972"],
+    "truth_numbers": ["1964"]
+}
+```
+
+<Note>
+  Year values (1400–2100) and small ordinal numbers (≤ 31) are intentionally excluded from number mismatch detection to avoid false positives on dates and list items. Only numerically close but unequal values that fall outside these ranges trigger a `"Number mismatch"` contradiction.
+</Note>
+
+---
+
+## Status thresholds summary
+
+The following table summarises how `score` and detected mismatches map to `status`:
+
+| Condition | Status |
+|---|---|
+| Number mismatch detected | `CONTRADICTION` |
+| Negation mismatch detected and score ≥ threshold | `CONTRADICTION` |
+| score ≥ 0.65 | `SUPPORTED` |
+| threshold ≤ score < 0.65 | `WEAK_SUPPORT` |
+| score < threshold | `HALLUCINATION` |
+
+<Tip>
+  You can adjust the boundary between `WEAK_SUPPORT` and `HALLUCINATION` by passing a custom `threshold` to `compare_to_docs`, `compare_to_files`, or `Engine.run`. The `SUPPORTED` vs `WEAK_SUPPORT` boundary is fixed at 0.65.
+</Tip>

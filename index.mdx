@@ -1,133 +1,93 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
-icon: 'star'
+title: "Halgorithem: AI Hallucination Detection for Python"
+description: "Detect AI hallucinations before they reach production. Halgorithem verifies AI-generated claims against your source documents using NLP — no AI required."
 ---
 
-## Setting up
+Halgorithem is a Python library that detects AI hallucinations by splitting AI output into individual claims and verifying each one against your provided source documents. Unlike AI-based approaches, Halgorithem uses semantic embeddings, NLP, and symbolic math to flag unsupported claims, contradictions, and hallucinated facts — without requiring a second AI call.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get from install to your first hallucination report in under 5 minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="How it works" icon="diagram-project" href="/concepts/overview">
+    Understand the claim-extraction and verification pipeline.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Python integration" icon="python" href="/guides/python-integration">
+    Use Halgorithem directly in your Python scripts and notebooks.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="API reference" icon="code" href="/api/halgorithm">
+    Full reference for the Halgorithm class and Engine module.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What Halgorithem detects
 
-Everything you need to create world-class documentation.
+Every AI output claim receives one of four verdicts after comparison with your truth documents:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+| Status | Meaning |
+|---|---|
+| `SUPPORTED` | Claim is semantically supported by source documents |
+| `WEAK_SUPPORT` | Claim is related but not strongly backed |
+| `CONTRADICTION` | Claim directly conflicts with source documents |
+| `HALLUCINATION` | Claim has no grounding in source documents |
 
-## Make your content agent ready
+## Get started in three steps
 
-Make your docs work for humans and AI agents alike.
+<Steps>
+  <Step title="Install the library">
+    Clone the repository, create a virtual environment, and install dependencies.
 
-<Columns cols={2}>
-  <Card
-    title="Prompt component"
-    icon="robot"
-    href="/agent-ready/prompt"
-  >
-    Embed shareable AI prompts readers can copy or open in Cursor.
-  </Card>
-  <Card
-    title="Visibility"
-    icon="eye"
-    href="/agent-ready/visibility"
-  >
-    Show different content to humans and agents reading your docs.
-  </Card>
-  <Card
-    title="Contextual menu"
-    icon="bolt"
-    href="/agent-ready/contextual"
-  >
-    Give readers one-click access to Claude, ChatGPT, Cursor, and more.
-  </Card>
-  <Card
-    title="AI coding tools"
-    icon="wand-magic-sparkles"
-    href="/ai-tools/claude-code"
-  >
-    Set up Claude Code, Cursor, or Windsurf with Mintlify's skill.
-  </Card>
-</Columns>
+    ```bash
+    git clone https://github.com/TangibleResearch/Halgorithem.git
+    cd Halgorithem
+    python -m venv venv && source venv/bin/activate
+    pip install -r requirements.txt
+    python -m spacy download en_core_web_sm
+    ```
+  </Step>
+  <Step title="Provide source documents">
+    Point Halgorithem at your truth sources — local files or web URLs.
 
-## Need inspiration?
+    ```python
+    from Halgorithem import Halgorithm
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    algo = Halgorithm()
+    docs = algo.load_files(["my_source.txt"])
+    ```
+  </Step>
+  <Step title="Verify AI output">
+    Pass AI-generated text and get a per-claim verification report.
+
+    ```python
+    results = algo.compare_to_docs(
+        truth_docs=docs,
+        ai_output="The Apollo 11 mission landed on the Moon in 1969.",
+        threshold=0.30
+    )
+    algo.print_report(results)
+    ```
+  </Step>
+</Steps>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="No AI required" icon="brain-circuit" href="/concepts/overview">
+    Detection runs entirely on NLP and semantic similarity — no LLM calls needed for verification.
+  </Card>
+  <Card title="Number conflict detection" icon="hashtag" href="/concepts/claim-verification">
+    Catches numeric hallucinations — wrong dates, figures, costs, and statistics.
+  </Card>
+  <Card title="Negation mismatch" icon="circle-xmark" href="/concepts/claim-verification">
+    Flags claims where the AI inverts the meaning of a source statement.
+  </Card>
+  <Card title="AI pipeline integration" icon="plug" href="/guides/ai-pipeline-integration">
+    Drop into LangGraph, CrewAI, PydanticAI, or AutoGen workflows.
+  </Card>
+  <Card title="Web scraping" icon="globe" href="/guides/web-scraping">
+    Automatically scrape URLs (including Wikipedia) as truth sources.
+  </Card>
+  <Card title="Interactive TUI" icon="terminal" href="/guides/tui">
+    Run verification interactively from the command line with the built-in TUI.
+  </Card>
+</CardGroup>

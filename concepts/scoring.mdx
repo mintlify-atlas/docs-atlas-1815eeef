@@ -1,0 +1,82 @@
+---
+title: "How Halgorithem scores claims with semantic similarity"
+description: "How Halgorithem uses cosine similarity between sentence embeddings, applies score adjustments for numbers and negation, and maps the result to a verdict."
+---
+
+Halgorithem scores each claim using cosine similarity between sentence embeddings, then applies rule-based adjustments for numbers and negation before classifying the result. The entire scoring process is deterministic and runs locally — no external model API calls are made.
+
+## Base scoring
+
+Every chunk and every claim is encoded to a 384-dimensional vector by SentenceTransformer `all-MiniLM-L6-v2`. Chunk embeddings are computed once when documents are loaded; claim embeddings are computed at verification time.
+
+Cosine similarity is computed via `sentence_transformers.util.cos_sim()`, which returns a value in the range `[−1.0, 1.0]`. In practice, sentence embeddings are non-negative, so scores sit between `0.0` and `1.0`.
+
+```python
+def support_score(self, claim, chunk):
+    claim_emb = _embedder.encode(claim, convert_to_tensor=True)
+    return float(util.cos_sim(claim_emb, chunk["embedding"]))
+```
+
+`support_score()` is a public method on `Halgorithm` — you can call it directly to score a single claim against a single chunk without running the full pipeline.
+
+<Note>
+  `support_score()` returns the **raw** cosine similarity before any adjustments. The adjusted score used for final classification is computed inside `check_claim_against_chunks()`.
+</Note>
+
+## Score adjustments
+
+After the raw similarity is computed for each chunk, two adjustments are applied before the best chunk is selected:
+
+### Number subset bonus (+0.10)
+
+If every number found in the claim is also present in the chunk, a `+0.10` bonus is added (capped at `1.0`). This rewards chunks that contain the specific figures the claim is making — a useful signal when multiple chunks have similar semantic content but only one has the right numbers.
+
+```python
+claim_numbers = set(self.extract_numbers(claim))
+if claim_numbers and claim_numbers.issubset(set(chunk["numbers"])):
+    score = min(score + 0.10, 1.0)
+```
+
+### Negation mismatch penalty (−0.30)
+
+If `has_negation_mismatch()` detects that the claim and chunk disagree on negation, and the current score is at or above `threshold`, a `−0.30` penalty is applied. This can push a borderline `WEAK_SUPPORT` score down into `HALLUCINATION` territory.
+
+```python
+negation = self.has_negation_mismatch(claim, chunk["text"])
+if negation and score >= threshold:
+    score -= 0.30
+```
+
+The adjusted score is what gets stored as `best_score` and returned in the result dict.
+
+## Score ranges and verdicts
+
+| Score range | Status |
+|---|---|
+| `>= 0.65` | `SUPPORTED` |
+| `>= threshold` and `< 0.65` | `WEAK_SUPPORT` |
+| `< threshold` | `HALLUCINATION` |
+| Number or negation conflict | `CONTRADICTION` (overrides score) |
+
+The `0.65` boundary for `SUPPORTED` is hardcoded. Only the lower boundary — between `WEAK_SUPPORT` and `HALLUCINATION` — moves when you change `threshold`.
+
+<Tip>
+  Start with the default `threshold=0.30` and review your `WEAK_SUPPORT` claims first. If you are seeing too many weak results that look like genuine support, raise the threshold toward `0.40`–`0.45` to make the `WEAK_SUPPORT` band narrower. If you are seeing too many `HALLUCINATION` verdicts for claims that seem partially grounded, lower the threshold toward `0.20`. Avoid setting `threshold` above `0.65`, as this would leave no room for `WEAK_SUPPORT`.
+</Tip>
+
+## Effect of chunking parameters on scoring accuracy
+
+The `sentences_per_chunk` and `sentence_overlap` constructor parameters directly affect how much context each chunk carries, which in turn affects cosine similarity scores.
+
+- **`sentences_per_chunk`** — larger values give each chunk more semantic context, which can improve similarity for claims that span multiple sentences. Very large values dilute the embedding with unrelated content, reducing precision.
+- **`sentence_overlap`** — overlap of `1` or more ensures that a claim sitting at the boundary between two sentences is still covered by at least one chunk. Setting this to `0` can cause boundary claims to score lower than they should.
+
+```python
+from Halgorithem import Halgorithm
+
+# more context per chunk, full sentence boundary coverage
+hal = Halgorithm(sentences_per_chunk=3, sentence_overlap=1)
+results = hal.compare_to_files(["facts.txt"], ai_output)
+```
+
+For short, dense documents (e.g. Wikipedia summaries), the defaults of `sentences_per_chunk=2` and `sentence_overlap=1` work well. For longer, more discursive documents, increasing `sentences_per_chunk` to `3` or `4` often improves recall.

@@ -1,0 +1,365 @@
+---
+title: "Halgorithm class: methods and parameters reference"
+description: "Complete reference for all public methods of the Halgorithm class — document loading, chunking, claim extraction, scoring, and verification."
+---
+
+The `Halgorithm` class is the core of the library — it handles document loading, chunking, claim extraction, and verification. Import it from `Halgorithem`.
+
+```python
+from Halgorithem import Halgorithm
+```
+
+## Constructor
+
+```python
+Halgorithm(sentences_per_chunk=2, sentence_overlap=1)
+```
+
+<ParamField path="sentences_per_chunk" type="int" default="2">
+  Number of sentences to include in each truth document chunk. Larger values give more context per chunk but reduce granularity.
+</ParamField>
+
+<ParamField path="sentence_overlap" type="int" default="1">
+  Number of sentences to overlap between consecutive chunks. Overlap helps avoid splitting claims across chunk boundaries.
+</ParamField>
+
+## Methods
+
+### compare_to_docs
+
+```python
+compare_to_docs(truth_docs, ai_output, threshold=0.30)
+```
+
+Verifies every meaningful claim in `ai_output` against the provided truth documents. This is the primary verification method — it accepts pre-loaded document dicts, raw strings, or lists of strings.
+
+<ParamField path="truth_docs" type="str | list[str] | list[dict]" required>
+  The source-of-truth content to verify against. Accepts:
+  - A single string (treated as one inline document)
+  - A list of strings (each treated as a separate inline document)
+  - A list of dicts with `file_id` (int), `file_path` (str), and `text` (str) keys — the format returned by `load_files()`
+</ParamField>
+
+<ParamField path="ai_output" type="str" required>
+  The AI-generated text to verify. Each sentence is extracted and checked independently.
+</ParamField>
+
+<ParamField path="threshold" type="float" default="0.30">
+  Minimum cosine similarity score required to avoid a `HALLUCINATION` classification. Claims scoring between `threshold` and 0.65 are classified as `WEAK_SUPPORT`; claims scoring 0.65 or above are `SUPPORTED`.
+</ParamField>
+
+Returns a list of claim result dicts — one per extracted claim. See [claim result object reference](/api/claim-results) for the full field list.
+
+---
+
+### compare_to_files
+
+```python
+compare_to_files(truth_file_paths, ai_output, threshold=0.30)
+```
+
+Loads files from disk, then runs the same verification pipeline as `compare_to_docs`. Use this when you have local source files rather than pre-loaded text.
+
+<ParamField path="truth_file_paths" type="list[str]" required>
+  List of file path strings to load as truth documents. Each file is read as UTF-8 text.
+</ParamField>
+
+<ParamField path="ai_output" type="str" required>
+  The AI-generated text to verify.
+</ParamField>
+
+<ParamField path="threshold" type="float" default="0.30">
+  Minimum cosine similarity score to avoid a `HALLUCINATION` classification.
+</ParamField>
+
+Returns the same list of claim result dicts as `compare_to_docs`.
+
+---
+
+### compare_with_reasoning
+
+```python
+compare_with_reasoning(truth_file_paths, ai_output, threshold=0.30)
+```
+
+Alias for `compare_to_files` — identical signature and return value. Provided for API compatibility.
+
+<ParamField path="truth_file_paths" type="list[str]" required>
+  List of file path strings to load as truth documents.
+</ParamField>
+
+<ParamField path="ai_output" type="str" required>
+  The AI-generated text to verify.
+</ParamField>
+
+<ParamField path="threshold" type="float" default="0.30">
+  Minimum cosine similarity score to avoid a `HALLUCINATION` classification.
+</ParamField>
+
+---
+
+### load_files
+
+```python
+load_files(file_paths)
+```
+
+Reads multiple files from disk and returns them as a list of document dicts ready to pass into `compare_to_docs`.
+
+<ParamField path="file_paths" type="list[str]" required>
+  List of file path strings to load.
+</ParamField>
+
+Returns a list of dicts, each with:
+
+<ResponseField name="file_id" type="int">
+  1-indexed position of the document in the list.
+</ResponseField>
+
+<ResponseField name="file_path" type="str">
+  The original file path string as provided.
+</ResponseField>
+
+<ResponseField name="text" type="str">
+  Full UTF-8 text content of the file.
+</ResponseField>
+
+---
+
+### load_file
+
+```python
+load_file(file_path)
+```
+
+Reads a single file from disk and returns its raw text content.
+
+<ParamField path="file_path" type="str" required>
+  Path to the file to read. Raises `FileNotFoundError` if the path does not exist, and `ValueError` if the path is not a file.
+</ParamField>
+
+Returns a `str` with the full UTF-8 content of the file.
+
+---
+
+### print_report
+
+```python
+print_report(results)
+```
+
+Prints a formatted verification report to stdout. The report shows overall confidence, counts of supported/weak/problematic claims, and detailed information for each hallucination or contradiction.
+
+<ParamField path="results" type="list[dict]" required>
+  List of claim result dicts returned by `compare_to_docs` or `compare_to_files`.
+</ParamField>
+
+Returns `None`. Output format:
+
+```text
+Halgorithm Report
+================================================================================
+Strongly supported: 3  Weak: 1  Issues: 1
+Confidence: 75.0%  —  not reliable
+================================================================================
+Claim #3 | CONTRADICTION | score 0.712
+
+BASIC was developed in 1972.
+
+Reason: Number mismatch
+AI numbers: ['1972']  Truth numbers: ['1964']
+Unsupported terms: 1972
+
+Closest chunk (sources/basic.txt, chunk 2):
+BASIC was developed in 1964 at Dartmouth College by John Kemeny and Thomas Kurtz.
+```
+
+---
+
+### chunk_text
+
+```python
+chunk_text(text, doc_id=1, source_name=None)
+```
+
+Splits a document into overlapping sentence chunks and computes embeddings, tokens, entities, and numbers for each chunk. You do not need to call this directly — `compare_to_docs` calls it internally.
+
+<ParamField path="text" type="str" required>
+  The document text to chunk.
+</ParamField>
+
+<ParamField path="doc_id" type="int" default="1">
+  Identifier to attach to all chunks from this document.
+</ParamField>
+
+<ParamField path="source_name" type="str" default="None">
+  Human-readable label for the source (e.g. a file path or URL) attached to each chunk.
+</ParamField>
+
+Returns a list of chunk dicts:
+
+<ResponseField name="doc_id" type="int">
+  The `doc_id` value passed to `chunk_text`.
+</ResponseField>
+
+<ResponseField name="source_name" type="str | null">
+  The `source_name` value passed to `chunk_text`.
+</ResponseField>
+
+<ResponseField name="chunk_id" type="int">
+  1-indexed position of this chunk within the document.
+</ResponseField>
+
+<ResponseField name="sentence_start" type="int">
+  1-indexed position of the first sentence in this chunk.
+</ResponseField>
+
+<ResponseField name="sentence_end" type="int">
+  1-indexed position of the last sentence in this chunk.
+</ResponseField>
+
+<ResponseField name="text" type="str">
+  The raw text of the chunk.
+</ResponseField>
+
+<ResponseField name="tokens" type="list[str]">
+  Lowercased tokens extracted from the chunk text, with punctuation and stop words removed (surface forms, not lemmatized).
+</ResponseField>
+
+<ResponseField name="entities" type="list[str]">
+  Named entities (proper nouns, organizations, locations, etc.) found in the chunk.
+</ResponseField>
+
+<ResponseField name="numbers" type="list[str]">
+  Numeric values found in the chunk text.
+</ResponseField>
+
+<ResponseField name="embedding" type="Tensor">
+  Sentence embedding tensor produced by `all-MiniLM-L6-v2` via `sentence-transformers`.
+</ResponseField>
+
+---
+
+### split_sentences
+
+```python
+split_sentences(text)
+```
+
+Splits text into individual sentences using [pysbd](https://github.com/nipunsadvilkar/pySBD), a sentence boundary detection library. Text is cleaned before segmentation.
+
+<ParamField path="text" type="str" required>
+  The text to split into sentences.
+</ParamField>
+
+Returns a `list[str]` of cleaned, non-empty sentence strings.
+
+---
+
+### support_score
+
+```python
+support_score(claim, chunk)
+```
+
+Computes the cosine similarity between a claim and a chunk using sentence embeddings. This is the core scoring function used during verification.
+
+<ParamField path="claim" type="str" required>
+  The claim sentence to score.
+</ParamField>
+
+<ParamField path="chunk" type="dict" required>
+  A chunk dict containing at minimum an `embedding` key (a sentence embedding tensor, as produced by `chunk_text`).
+</ParamField>
+
+Returns a `float` in the range `[-1.0, 1.0]` representing the cosine similarity between the claim and the chunk. Higher values indicate stronger semantic alignment.
+
+---
+
+### is_meaningful_claim
+
+```python
+is_meaningful_claim(claim)
+```
+
+Filters out trivial or summary sentences that cannot be meaningfully verified — for example, sentences with demonstrative subjects like "This reflects…" or sentences with fewer than 4 tokens. Only claims that pass this filter are included in verification results.
+
+<ParamField path="claim" type="str" required>
+  The sentence to evaluate.
+</ParamField>
+
+Returns `True` if the claim is verifiable, `False` if it should be skipped.
+
+---
+
+### classify_claim_type
+
+```python
+classify_claim_type(claim)
+```
+
+Determines whether a claim contains a mathematical expression that can be verified by direct evaluation, or whether it should be verified against source documents.
+
+<ParamField path="claim" type="str" required>
+  The claim sentence to classify.
+</ParamField>
+
+Returns `"MATH"` if the claim contains an arithmetic expression (e.g. `2 + 2 = 4`, `50%`), or `"SOURCE"` otherwise.
+
+---
+
+## Usage example
+
+<CodeGroup>
+
+```python basic verification
+from Halgorithem import Halgorithm
+
+algo = Halgorithm(sentences_per_chunk=2, sentence_overlap=1)
+
+# Load from files
+docs = algo.load_files(["sources/basic.txt", "sources/basic2.txt"])
+
+# Compare AI output
+results = algo.compare_to_docs(
+    truth_docs=docs,
+    ai_output="BASIC was developed in 1964 at Dartmouth College.",
+    threshold=0.30
+)
+
+algo.print_report(results)
+```
+
+```python inline text
+from Halgorithem import Halgorithm
+
+algo = Halgorithm()
+
+results = algo.compare_to_docs(
+    truth_docs="BASIC was developed in 1964 at Dartmouth College by John Kemeny and Thomas Kurtz.",
+    ai_output="BASIC was developed in 1972.",
+    threshold=0.30
+)
+
+for r in results:
+    print(r["claim_id"], r["status"], r["score"])
+```
+
+```python files shorthand
+from Halgorithem import Halgorithm
+
+algo = Halgorithm()
+
+results = algo.compare_to_files(
+    truth_file_paths=["sources/basic.txt"],
+    ai_output="BASIC was developed in 1964 at Dartmouth College.",
+)
+
+algo.print_report(results)
+```
+
+</CodeGroup>
+
+<Tip>
+  You can pass a plain string or a list of strings directly to `compare_to_docs` without calling `load_files` first. Use `load_files` only when you want to reuse the same loaded documents across multiple calls.
+</Tip>

@@ -1,0 +1,47 @@
+---
+title: "What is Halgorithem? Python Hallucination Detection"
+description: "Halgorithem is a Python library that detects AI hallucinations by comparing AI-generated claims against your source documents — no second LLM call needed."
+---
+
+Halgorithem is a Python library that catches AI hallucinations before they reach your users. It splits AI-generated output into individual claims, then scores each one against truth documents you supply — using semantic embeddings and NLP rather than another AI model. The result is a per-claim verdict that tells you exactly which statements are grounded in your sources and which are not.
+
+## The problem it solves
+
+Large language models generate text that sounds confident even when it is factually wrong. These errors — called hallucinations — range from subtle inaccuracies to entirely fabricated facts. Catching them manually is slow and error-prone at scale. Routing output through a second LLM is expensive, adds latency, and introduces a new source of error. Halgorithem takes a different path: it uses deterministic NLP and vector similarity to verify claims against documents you already trust.
+
+<Note>
+  Halgorithem does not make any AI or LLM calls during verification. The entire detection pipeline runs on NLP models and semantic embeddings that run locally.
+</Note>
+
+## Claim statuses
+
+Every sentence in the AI output that contains a verifiable claim receives one of four statuses after comparison with your truth documents:
+
+| Status | Meaning |
+|---|---|
+| `SUPPORTED` | The claim is semantically supported by the source documents (similarity score ≥ 0.65). |
+| `WEAK_SUPPORT` | The claim is related to source content but not strongly backed (score between threshold and 0.65). |
+| `CONTRADICTION` | The claim directly conflicts with source documents — number mismatch or negation detected. |
+| `HALLUCINATION` | The claim has no grounding in any source document (score below threshold). |
+
+## How it works
+
+Halgorithem follows a four-stage pipeline:
+
+1. **Load truth documents** — supply local text files, pre-loaded document dicts, or scraped web pages.
+2. **Parse AI output into claims** — `pysbd` segments the AI response into sentences; meaningless or summary sentences are filtered out.
+3. **Score each claim** — sentence embeddings (via `sentence-transformers`) measure semantic similarity between the claim and overlapping chunks of the truth documents. Number conflicts and negation mismatches apply additional penalties.
+4. **Return verdicts** — each claim receives a status, a similarity score, the closest matching chunk, and a list of any unsupported terms.
+
+## Works with your AI stack
+
+Halgorithem is designed to fit into any Python-based AI workflow as a post-generation verification step. It integrates with popular orchestration frameworks including LangGraph, CrewAI, PydanticAI, and Microsoft AutoGen.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install Halgorithem and run your first verification check in minutes.
+  </Card>
+  <Card title="How it works" icon="diagram-project" href="/concepts/overview">
+    Explore the claim-extraction and scoring pipeline in depth.
+  </Card>
+</CardGroup>
